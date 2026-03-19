@@ -9,17 +9,14 @@ export default function WebSpeechTTS() {
     const [status, setStatus] = useState("Status: Ready.");
     const textRef = useRef();
 
-    // Detect Android Edge
     const isAndroid = /Android/i.test(navigator.userAgent);
 
-    // Force Android to load voices
     const forceAndroidVoiceLoad = () => {
         const dummy = new SpeechSynthesisUtterance(" ");
         synth.speak(dummy);
         synth.cancel();
     };
 
-    // Load voices with Android fallback
     const loadVoices = () => {
         let v = synth.getVoices();
 
@@ -29,13 +26,11 @@ export default function WebSpeechTTS() {
             return;
         }
 
-        // Android fallback: force load
         if (isAndroid) {
             forceAndroidVoiceLoad();
         }
     };
 
-    // Poll voices until available (Android needs this)
     const startVoicePolling = () => {
         let attempts = 0;
         const maxAttempts = 20;
@@ -56,12 +51,10 @@ export default function WebSpeechTTS() {
         loadVoices();
         window.speechSynthesis.onvoiceschanged = loadVoices;
 
-        // Android-specific repeated polling
         if (isAndroid) {
             startVoicePolling();
         }
 
-        // fallback load
         setTimeout(loadVoices, 500);
     }, []);
 
@@ -93,6 +86,16 @@ export default function WebSpeechTTS() {
             synth.cancel();
             setStatus("Status: Stopped.");
         }
+    };
+
+    const previewVoice = (voice) => {
+        synth.cancel();
+        const utter = new SpeechSynthesisUtterance("This is a preview of my voice.");
+        utter.voice = voice;
+        utter.rate = 1;
+        utter.pitch = 1;
+        utter.volume = 1;
+        synth.speak(utter);
     };
 
     return (
@@ -132,6 +135,26 @@ export default function WebSpeechTTS() {
                 <button className="outline margin-top" onClick={loadVoices}>
                     🔄 Load Available Voices
                 </button>
+
+                {/* 🔥 Scrollable Voice Preview List */}
+                <h3 style={{ marginTop: "20px" }}>Voice Preview List</h3>
+
+                <div className="voice-preview-list">
+                    <ul style={{ listStyle: "none", padding: 0 }}>
+                        {voices.map((voice, index) => (
+                            <li key={index} style={{ marginBottom: "10px" }}>
+                                <strong>{voice.name}</strong> ({voice.lang})
+                                {voice.default && " [Default]"}
+                                <button
+                                    style={{ marginLeft: "10px" }}
+                                    onClick={() => previewVoice(voice)}
+                                >
+                                    ▶ Preview
+                                </button>
+                            </li>
+                        ))}
+                    </ul>
+                </div>
             </div>
         </div>
     );
