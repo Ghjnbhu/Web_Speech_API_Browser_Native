@@ -9,18 +9,57 @@ export default function WebSpeechTTS() {
     const [status, setStatus] = useState("Status: Ready.");
     const textRef = useRef();
 
-    // Load voices when available
+    // Detect Android Edge
+    const isAndroid = /Android/i.test(navigator.userAgent);
+
+    // Force Android to load voices
+    const forceAndroidVoiceLoad = () => {
+        const dummy = new SpeechSynthesisUtterance(" ");
+        synth.speak(dummy);
+        synth.cancel();
+    };
+
+    // Load voices with Android fallback
     const loadVoices = () => {
-        const v = synth.getVoices();
+        let v = synth.getVoices();
+
         if (v.length > 0) {
             setVoices(v);
             setStatus(`Status: Loaded ${v.length} voices.`);
+            return;
         }
+
+        // Android fallback: force load
+        if (isAndroid) {
+            forceAndroidVoiceLoad();
+        }
+    };
+
+    // Poll voices until available (Android needs this)
+    const startVoicePolling = () => {
+        let attempts = 0;
+        const maxAttempts = 20;
+
+        const interval = setInterval(() => {
+            const v = synth.getVoices();
+            if (v.length > 0) {
+                clearInterval(interval);
+                setVoices(v);
+                setStatus(`Status: Loaded ${v.length} voices.`);
+            }
+            attempts++;
+            if (attempts >= maxAttempts) clearInterval(interval);
+        }, 300);
     };
 
     useEffect(() => {
         loadVoices();
         window.speechSynthesis.onvoiceschanged = loadVoices;
+
+        // Android-specific repeated polling
+        if (isAndroid) {
+            startVoicePolling();
+        }
 
         // fallback load
         setTimeout(loadVoices, 500);
