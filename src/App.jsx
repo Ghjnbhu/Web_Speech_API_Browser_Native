@@ -10,66 +10,59 @@ export default function WebSpeechTTS() {
     const textRef = useRef();
 
     const isAndroid = /Android/i.test(navigator.userAgent);
+    const isEdge = /EdgA/i.test(navigator.userAgent);
 
-    const forceAndroidVoiceLoad = () => {
-        const dummy = new SpeechSynthesisUtterance(" ");
-        synth.speak(dummy);
-        synth.cancel();
+    // 🔥 NEW: Android Edge voice loader
+    const loadAndroidVoices = () => {
+        try {
+            if (window.AndroidSpeech && window.AndroidSpeech.getVoices) {
+                const json = window.AndroidSpeech.getVoices();
+                const parsed = JSON.parse(json);
+
+                setVoices(parsed);
+                setStatus(`Status: Loaded ${parsed.length} Android voices.`);
+                return true;
+            }
+        } catch (e) {
+            console.log("AndroidSpeech error:", e);
+        }
+        return false;
     };
 
-    const loadVoices = () => {
-        let v = synth.getVoices();
-
+    // 🔥 Web Speech API loader (Firefox, Desktop)
+    const loadWebVoices = () => {
+        const v = synth.getVoices();
         if (v.length > 0) {
             setVoices(v);
             setStatus(`Status: Loaded ${v.length} voices.`);
-            return;
+            return true;
         }
-
-        if (isAndroid) {
-            forceAndroidVoiceLoad();
-        }
+        return false;
     };
 
-    const startVoicePolling = () => {
-        let attempts = 0;
-        const maxAttempts = 20;
-
-        const interval = setInterval(() => {
-            const v = synth.getVoices();
-            if (v.length > 0) {
-                clearInterval(interval);
-                setVoices(v);
-                setStatus(`Status: Loaded ${v.length} voices.`);
-            }
-            attempts++;
-            if (attempts >= maxAttempts) clearInterval(interval);
-        }, 300);
+    // 🔥 Combined loader
+    const loadVoices = () => {
+        if (isAndroid && isEdge) {
+            if (loadAndroidVoices()) return;
+        }
+        loadWebVoices();
     };
 
     useEffect(() => {
         loadVoices();
         window.speechSynthesis.onvoiceschanged = loadVoices;
-
-        if (isAndroid) {
-            startVoicePolling();
-        }
-
         setTimeout(loadVoices, 500);
     }, []);
 
-    const speak = () => {
-        const text = textRef.current.value.trim();
-        if (!text) return alert("Please enter some text");
+    // 🔥 Speak using AndroidSpeech if available
+    const speakAndroid = (text, voice) => {
+        window.AndroidSpeech.speak(text, JSON.stringify(voice));
+    };
 
+    const speakWeb = (text, voice) => {
         synth.cancel();
-
         const utter = new SpeechSynthesisUtterance(text);
-
-        if (voices[selectedVoice]) {
-            utter.voice = voices[selectedVoice];
-        }
-
+        utter.voice = voice;
         utter.rate = 1;
         utter.pitch = 1;
         utter.volume = 1;
@@ -81,21 +74,36 @@ export default function WebSpeechTTS() {
         synth.speak(utter);
     };
 
+    const speak = () => {
+        const text = textRef.current.value.trim();
+        if (!text) return alert("Please enter some text");
+
+        const voice = voices[selectedVoice];
+
+        if (isAndroid && isEdge && window.AndroidSpeech) {
+            speakAndroid(text, voice);
+        } else {
+            speakWeb(text, voice);
+        }
+    };
+
     const stop = () => {
-        if (synth.speaking) {
+        if (isAndroid && isEdge && window.AndroidSpeech) {
+            window.AndroidSpeech.stop();
+            setStatus("Status: Stopped.");
+        } else {
             synth.cancel();
             setStatus("Status: Stopped.");
         }
     };
 
+    // 🔥 Preview voice
     const previewVoice = (voice) => {
-        synth.cancel();
-        const utter = new SpeechSynthesisUtterance("This is a preview of my voice.");
-        utter.voice = voice;
-        utter.rate = 1;
-        utter.pitch = 1;
-        utter.volume = 1;
-        synth.speak(utter);
+        if (isAndroid && isEdge && window.AndroidSpeech) {
+            window.AndroidSpeech.speak("This is a preview of my voice.", JSON.stringify(voice));
+        } else {
+            speakWeb("This is a preview of my voice.", voice);
+        }
     };
 
     return (
@@ -125,7 +133,7 @@ export default function WebSpeechTTS() {
 
                     {voices.map((v, i) => (
                         <option key={i} value={i}>
-                            {v.name} ({v.lang}) {v.default ? " [Default]" : ""}
+                            {v.name} ({v.lang})
                         </option>
                     ))}
                 </select>
@@ -136,7 +144,6 @@ export default function WebSpeechTTS() {
                     🔄 Load Available Voices
                 </button>
 
-                {/* 🔥 Scrollable Voice Preview List */}
                 <h3 style={{ marginTop: "20px" }}>Voice Preview List</h3>
 
                 <div className="voice-preview-list">
@@ -144,7 +151,6 @@ export default function WebSpeechTTS() {
                         {voices.map((voice, index) => (
                             <li key={index} style={{ marginBottom: "10px" }}>
                                 <strong>{voice.name}</strong> ({voice.lang})
-                                {voice.default && " [Default]"}
                                 <button
                                     style={{ marginLeft: "10px" }}
                                     onClick={() => previewVoice(voice)}
